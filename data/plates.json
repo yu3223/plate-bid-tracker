@@ -1,0 +1,33 @@
+{
+  "updated_at": "2026-11-19 21:30:00",
+  "announcements": [
+    {
+      "station": "高雄市區監理所",
+      "vehicle_type": "自用小客貨車",
+      "plate_range": "BXX-0001 ~ BXX-9999",
+      "start_time": "2026-11-23 10:00",
+      "end_time": "2026-11-25 10:00",
+      "status": "即將開標"
+    }
+  ],
+  "bids": [
+    {
+      "plate": "BXX-8888",
+      "station": "高雄市區監理所",
+      "vehicle_type": "自用小客貨車",
+      "price": 68000,
+      "bid_count": 24,
+      "end_time": "2026-11-25 10:00",
+      "status": "競標中"
+    },
+    {
+      "plate": "BXX-1688",
+      "station": "高雄區監理所",
+      "vehicle_type": "自用小客貨車",
+      "price": 12000,
+      "bid_count": 7,
+      "end_time": "2026-11-20 10:00",
+      "status": "歷史紀錄"
+    }
+  ]
+}

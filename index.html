@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>監理站車牌標售與行情查詢</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen">
+  <div class="max-w-5xl mx-auto px-4 py-6">
+    <!-- 標題列 -->
+    <header class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-6">
+      <div>
+        <h1 class="text-2xl font-bold text-slate-900">🚗 監理站車牌標售查詢</h1>
+        <p class="text-sm text-slate-500">資料來源：監理服務網（自動排程更新）</p>
+      </div>
+      <div class="text-xs bg-white px-3 py-1.5 rounded-full shadow-sm border border-slate-200 self-start">
+        最後更新：<span id="updatedAt" class="font-mono font-semibold text-blue-600">載入中...</span>
+      </div>
+    </header>
+
+    <!-- 統計摘要卡片 -->
+    <section class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+        <div class="text-xs text-slate-500">目前標售公告</div>
+        <div id="statAnnounce" class="text-2xl font-bold text-slate-900 mt-1">-</div>
+      </div>
+      <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+        <div class="text-xs text-slate-500">收錄行情筆數</div>
+        <div id="statBids" class="text-2xl font-bold text-slate-900 mt-1">-</div>
+      </div>
+      <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+        <div class="text-xs text-slate-500">篩選最高金額</div>
+        <div id="statMaxPrice" class="text-2xl font-bold text-emerald-600 mt-1">-</div>
+      </div>
+      <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+        <div class="text-xs text-slate-500">最高競標次數</div>
+        <div id="statMaxCount" class="text-2xl font-bold text-amber-600 mt-1">-</div>
+      </div>
+    </section>
+
+    <!-- 分頁切換 -->
+    <div class="flex gap-2 mb-4">
+      <button id="tabBids" onclick="switchTab('bids')"
+        class="px-4 py-2 rounded-lg font-medium text-sm bg-blue-600 text-white shadow-sm">
+        💰 行情與競標次數
+      </button>
+      <button id="tabAnnounce" onclick="switchTab('announce')"
+        class="px-4 py-2 rounded-lg font-medium text-sm bg-white text-slate-600 border border-slate-200 hover:bg-slate-50">
+        📢 標售公告號段
+      </button>
+    </div>
+
+    <!-- 搜尋與篩選列 -->
+    <section class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-4 grid grid-cols-1 sm:grid-cols-4 gap-3">
+      <input id="searchInput" type="text" placeholder="搜尋車牌或號段 (如 8888, BXX)..."
+        class="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        oninput="render()" />
+
+      <select id="stationFilter" class="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white" onchange="render()">
+        <option value="">全部監理站</option>
+      </select>
+
+      <select id="statusFilter" class="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white" onchange="render()">
+        <option value="">全部狀態</option>
+        <option value="競標中">只看競標中</option>
+        <option value="歷史紀錄">只看歷史紀錄</option>
+      </select>
+
+      <select id="sortBy" class="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white" onchange="render()">
+        <option value="price_desc">金額：高 → 低</option>
+        <option value="price_asc">金額：低 → 高</option>
+        <option value="count_desc">競標次數：多 → 少</option>
+      </select>
+    </section>
+
+    <!-- 資料列表區 -->
+    <section class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
+      <table class="w-full text-left border-collapse text-sm">
+        <thead id="tableHead" class="bg-slate-50 text-slate-600 border-b border-slate-200"></thead>
+        <tbody id="tableBody" class="divide-y divide-slate-100"></tbody>
+      </table>
+      <div id="emptyMsg" class="hidden text-center py-10 text-slate-400">查無符合條件的資料</div>
+    </section>
+  </div>
+
+  <script>
+    let rawData = { updated_at: "", announcements: [], bids: [] };
+    let currentTab = "bids";
+
+    async function loadData() {
+      try {
+        // 加上時間戳避免瀏覽器快取舊 JSON
+        const res = await fetch(`./data/plates.json?t=${Date.now()}`);
+        rawData = await res.json();
+        document.getElementById("updatedAt").textContent = rawData.updated_at || "未知";
+        document.getElementById("statAnnounce").textContent = rawData.announcements.length;
+        document.getElementById("statBids").textContent = rawData.bids.length;
+        populateStations();
+        render();
+      } catch (err) {
+        document.getElementById("updatedAt").textContent = "讀取失敗";
+        console.error(err);
+      }
+    }
+
+    function populateStations() {
+      const stations = new Set([
+        ...rawData.announcements.map(x => x.station),
+        ...rawData.bids.map(x => x.station)
+      ].filter(Boolean));
+
+      const select = document.getElementById("stationFilter");
+      select.innerHTML = '<option value="">全部監理站</option>';
+      [...stations].sort().forEach(st => {
+        const opt = document.createElement("option");
+        opt.value = st;
+        opt.textContent = st;
+        select.appendChild(opt);
+      });
+    }
+
+    function switchTab(tab) {
+      currentTab = tab;
+      const activeClass = "px-4 py-2 rounded-lg font-medium text-sm bg-blue-600 text-white shadow-sm";
+      const inactiveClass = "px-4 py-2 rounded-lg font-medium text-sm bg-white text-slate-600 border border-slate-200 hover:bg-slate-50";
+
+      document.getElementById("tabBids").className = tab === "bids" ? activeClass : inactiveClass;
+      document.getElementById("tabAnnounce").className = tab === "announce" ? activeClass : inactiveClass;
+      document.getElementById("statusFilter").classList.toggle("hidden", tab !== "bids");
+      document.getElementById("sortBy").classList.toggle("hidden", tab !== "bids");
+      render();
+    }
+
+    function render() {
+      const keyword = document.getElementById("searchInput").value.trim().toUpperCase();
+      const station = document.getElementById("stationFilter").value;
+      const status = document.getElementById("statusFilter").value;
+      const sortBy = document.getElementById("sortBy").value;
+
+      const thead = document.getElementById("tableHead");
+      const tbody = document.getElementById("tableBody");
+      const emptyMsg = document.getElementById("emptyMsg");
+
+      if (currentTab === "bids") {
+        thead.innerHTML = `
+          <tr>
+            <th class="py-3 px-4">車牌號碼</th>
+            <th class="py-3 px-4">監理站 / 車種</th>
+            <th class="py-3 px-4 text-right">目前/決標金額</th>
+            <th class="py-3 px-4 text-center">競標次數</th>
+            <th class="py-3 px-4">截標時間</th>
+            <th class="py-3 px-4">狀態</th>
+          </tr>`;
+
+        let list = rawData.bids.filter(item => {
+          const matchKey = !keyword || item.plate.toUpperCase().includes(keyword);
+          const matchStation = !station || item.station === station;
+          const matchStatus = !status || item.status === status;
+          return matchKey && matchStation && matchStatus;
+        });
+
+        list.sort((a, b) => {
+          if (sortBy === "price_desc") return b.price - a.price;
+          if (sortBy === "price_asc") return a.price - b.price;
+          if (sortBy === "count_desc") return b.bid_count - a.bid_count;
+          return 0;
+        });
+
+        const maxPrice = list.length ? Math.max(...list.map(x => x.price)) : 0;
+        const maxCount = list.length ? Math.max(...list.map(x => x.bid_count)) : 0;
+        document.getElementById("statMaxPrice").textContent = `$${maxPrice.toLocaleString()}`;
+        document.getElementById("statMaxCount").textContent = `${maxCount} 次`;
+
+        emptyMsg.classList.toggle("hidden", list.length > 0);
+        tbody.innerHTML = list.map(item => `
+          <tr class="hover:bg-slate-50">
+            <td class="py-3 px-4 font-mono font-bold text-base text-slate-900">${item.plate}</td>
+            <td class="py-3 px-4">
+              <div class="font-medium">${item.station}</div>
+              <div class="text-xs text-slate-500">${item.vehicle_type}</div>
+            </td>
+            <td class="py-3 px-4 text-right font-mono font-bold text-emerald-700">$${item.price.toLocaleString()}</td>
+            <td class="py-3 px-4 text-center">
+              <span class="inline-block bg-amber-100 text-amber-800 font-semibold px-2.5 py-0.5 rounded-full text-xs">
+                ${item.bid_count} 次
+              </span>
+            </td>
+            <td class="py-3 px-4 text-xs text-slate-600 font-mono">${item.end_time || "-"}</td>
+            <td class="py-3 px-4">
+              <span class="px-2 py-0.5 rounded text-xs font-medium ${
+                item.status === "競標中" ? "bg-blue-100 text-blue-700" : "bg-slate-200 text-slate-600"
+              }">${item.status}</span>
+            </td>
+          </tr>
+        `).join("");
+      } else {
+        thead.innerHTML = `
+          <tr>
+            <th class="py-3 px-4">監理站</th>
+            <th class="py-3 px-4">車種</th>
+            <th class="py-3 px-4">標售號段</th>
+            <th class="py-3 px-4">起標時間</th>
+            <th class="py-3 px-4">截標時間</th>
+            <th class="py-3 px-4">狀態</th>
+          </tr>`;
+
+        let list = rawData.announcements.filter(item => {
+          const matchKey = !keyword || item.plate_range.toUpperCase().includes(keyword);
+          const matchStation = !station || item.station === station;
+          return matchKey && matchStation;
+        });
+
+        emptyMsg.classList.toggle("hidden", list.length > 0);
+        tbody.innerHTML = list.map(item => `
+          <tr class="hover:bg-slate-50">
+            <td class="py-3 px-4 font-medium">${item.station}</td>
+            <td class="py-3 px-4 text-slate-600">${item.vehicle_type}</td>
+            <td class="py-3 px-4 font-mono font-bold text-blue-700">${item.plate_range}</td>
+            <td class="py-3 px-4 text-xs font-mono text-slate-600">${item.start_time}</td>
+            <td class="py-3 px-4 text-xs font-mono text-slate-600">${item.end_time}</td>
+            <td class="py-3 px-4"><span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded text-xs">${item.status}</span></td>
+          </tr>
+        `).join("");
+      }
+    }
+
+    loadData();
+  </script>
+</body>
+</html>
